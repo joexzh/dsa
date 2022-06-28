@@ -60,22 +60,22 @@ func (l *LinkedList) Find(e interface{}, n int, p *LinkedNode) *LinkedNode {
 }
 
 // Search only make sense for a sorted list, o(n)
-func (l *LinkedList) Search(e dsa.Comparable) (*LinkedNode, bool) {
-	succ := l.header.succ
-	for succ != l.trailer {
-		succE, ok := succ.Data.(dsa.Comparable)
+func (l *LinkedList) Search(item dsa.Item) (*LinkedNode, bool) {
+	curr := l.header.succ
+	for curr != l.trailer {
+		currItem, ok := curr.Data.(dsa.Item)
 		if !ok {
 			panic("LinkedList.Search method only support type implements dsa.Comparable interface!")
 		}
-		if succE.Compare(e) == 0 {
-			return succ, true
+		if !currItem.Less(item) && !item.Less(currItem) {
+			return curr, true
 		}
-		if succE.Compare(e) > 0 {
-			return succ.pred, false
+		if !currItem.Less(item) {
+			return curr.pred, false
 		}
-		succ = succ.succ
+		curr = curr.succ
 	}
-	return succ, false
+	return curr, false
 }
 
 func (l *LinkedList) InsertEnd(e interface{}) {
@@ -142,11 +142,6 @@ func (l *LinkedList) Sort() {
 	panic("not implement")
 }
 
-func (l LinkedList) mergeSort() {
-	// todo linked list
-	panic("not implement")
-}
-
 func (l *LinkedList) Remove(q *LinkedNode) {
 	if !q.Valid() {
 		return
@@ -163,4 +158,15 @@ func (l *LinkedList) First() *LinkedNode {
 
 func (l *LinkedList) Last() *LinkedNode {
 	return l.trailer.pred
+}
+
+func (l *LinkedList) Traverse(f func(node *LinkedNode)) {
+	for nd := l.First(); nd.Valid(); nd = nd.succ {
+		f(nd)
+	}
+}
+
+func (l LinkedList) mergeSort() {
+	// todo linked list
+	panic("not implement")
 }

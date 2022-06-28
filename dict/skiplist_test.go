@@ -13,18 +13,15 @@ import (
 
 type myInt int
 
-func (m myInt) Compare(other dsa.Comparable) int {
-	o, ok := other.(myInt)
+func (m myInt) Less(than dsa.Item) bool {
+	th, ok := than.(myInt)
 	if !ok {
 		panic("myInt.Compare method's parameter type must be myInt as well")
 	}
-	if m > o {
-		return 1
+	if m < th {
+		return true
 	}
-	if m < o {
-		return -1
-	}
-	return 0
+	return false
 }
 
 func SkipListSizeTest(t *testing.T, sl SkipList, expected int) {
@@ -36,43 +33,42 @@ func SkipListSizeTest(t *testing.T, sl SkipList, expected int) {
 
 func TestSkipList_Empty(t *testing.T) {
 	sl := NewSkipList()
-	sl.Put(myInt(2), 4.3)
-	sl.Put(myInt(3), 4.3)
-	sl.Put(myInt(2), 4.3)
-	sl.Put(myInt(2), 4.3)
-	sl.Put(myInt(4), 4.3)
-	sl.Put(myInt(6), 4.3)
-	sl.Put(myInt(5), 4.3)
+	sl.Put(myInt(2), 2.1)
+	sl.Put(myInt(3), 3.1)
+	sl.Put(myInt(2), 2.2)
+	sl.Put(myInt(2), 2.3)
+	sl.Put(myInt(4), 4.1)
+	sl.Put(myInt(6), 6.1)
+	sl.Put(myInt(5), 5.1)
 	SkipListSizeTest(t, sl, 7)
 
 	if sl.Empty() {
 		t.Fatalf("excepte not empty, got empty")
 	}
-	if !sl.Remove(myInt(3)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(3))
+	n := sl.Remove(myInt(3))
+	if n != 1 {
+		t.Fatalf("key %v expected remove 1, got %d", myInt(3), n)
 	}
-	if sl.Remove(myInt(1)) {
-		t.Fatalf("key %v expected remove fail, got success", myInt(1))
+	n = sl.Remove(myInt(1))
+	if n != 0 {
+		t.Fatalf("key %v expected remove 0, got %d", myInt(1), n)
 	}
-	if !sl.Remove(myInt(4)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(4))
+	n = sl.Remove(myInt(4))
+	if n != 1 {
+		t.Fatalf("key %v expected remove 1, got %d", myInt(4), n)
 	}
-	if !sl.Remove(myInt(5)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(5))
+	n = sl.Remove(myInt(5))
+	if n != 1 {
+		t.Fatalf("key %v expected remove 5, got %d", myInt(5), n)
 	}
-	if !sl.Remove(myInt(6)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(6))
+	n = sl.Remove(myInt(6))
+	if n != 1 {
+		t.Fatalf("key %v expected remove success, got %d", myInt(6), n)
 	}
-	if !sl.Remove(myInt(2)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(2))
+	n = sl.Remove(myInt(2))
+	if n != 3 {
+		t.Fatalf("key %v expected remove 3, got %d", myInt(2), n)
 	}
-	if !sl.Remove(myInt(2)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(2))
-	}
-	if !sl.Remove(myInt(2)) {
-		t.Fatalf("key %v expected remove success, got fail", myInt(2))
-	}
-
 	if !sl.Empty() {
 		t.Fatalf("expect empty, got not empty")
 	}
@@ -81,31 +77,72 @@ func TestSkipList_Empty(t *testing.T) {
 
 func TestSkipList_GetRange(t *testing.T) {
 	sl := NewSkipList()
-	sl.Put(myInt(1), 1.2)
-	sl.Put(myInt(11), 11.2)
-	sl.Put(myInt(4), 4.2)
-	sl.Put(myInt(1), 1.22)
-	sl.Put(myInt(1), 1.23)
-	sl.Put(myInt(7), 7.2)
-	sl.Put(myInt(9), 9.2)
-	sl.Put(myInt(4), 4.22)
-	sl.Put(myInt(4), 4.222)
-	sl.Put(myInt(4), 4.24)
+	sl.Put(myInt(1), 2^0)
+	sl.Put(myInt(11), 2^1)
+	sl.Put(myInt(4), 2^2)
+	sl.Put(myInt(1), 2^3)
+	sl.Put(myInt(1), 2^4)
+	sl.Put(myInt(7), 2^5)
+	sl.Put(myInt(9), 2^6)
+	sl.Put(myInt(4), 2^7)
+	sl.Put(myInt(4), 2^8)
+	sl.Put(myInt(4), 2^9)
 
 	rl := sl.GetRange(myInt(1), myInt(5))
+	gotEntries := make([]dsa.Entry, 0)
+	rl.Traverse(func(nd *list.LinkedNode) {
+		e := nd.Data.(dsa.Entry)
+		gotEntries = append(gotEntries, e)
+	})
 
-	expectList := list.NewLinkedList()
-	expectList.InsertEnd(dsa.Entry{K: myInt(1), V: 1.2})
-	expectList.InsertEnd(dsa.Entry{K: myInt(1), V: 1.22})
-	expectList.InsertEnd(dsa.Entry{K: myInt(1), V: 1.23})
-	expectList.InsertEnd(dsa.Entry{K: myInt(4), V: 4.2})
-	expectList.InsertEnd(dsa.Entry{K: myInt(4), V: 4.22})
-	expectList.InsertEnd(dsa.Entry{K: myInt(4), V: 4.222})
-	expectList.InsertEnd(dsa.Entry{K: myInt(4), V: 4.24})
+	expectedEntries := []dsa.Entry{{myInt(1), 2 ^ 0}, {myInt(1), 2 ^ 3}, {myInt(1), 2 ^ 4},
+		{myInt(4), 2 ^ 2}, {myInt(4), 2 ^ 7}, {myInt(4), 2 ^ 8}, {myInt(4), 2 ^ 9}}
 
-	if !rl.Equal(expectList) {
-		t.Fatalf("expected %s, got %s", expectList.String(), rl.String())
+	expectedLen := len(expectedEntries)
+	gotLen := len(gotEntries)
+	if len(gotEntries) != len(expectedEntries) {
+		t.Logf("expectedEnt %v, gotEnt %v", expectedEntries, gotEntries)
+		t.Fatalf("expected gotEntries len %v, got %v", expectedLen, gotLen)
 	}
+
+	for i := range gotEntries {
+		if gotEntries[i].K != expectedEntries[i].K {
+			t.Fatalf("expecte %d, got %d, unmatch index %d", expectedEntries, gotEntries, i)
+		}
+	}
+
+	var gotSum1 int
+	for _, e := range gotEntries {
+		if e.K == myInt(1) {
+			gotSum1 |= e.V.(int)
+		}
+	}
+	var expectedSum1 int
+	for _, e := range expectedEntries {
+		if e.K == myInt(1) {
+			expectedSum1 |= e.V.(int)
+		}
+	}
+	if expectedSum1 != gotSum1 {
+		t.Fatalf("expectedSum1 %d, gotSum1 %d", expectedSum1, gotSum1)
+	}
+
+	var gotSum4 int
+	for _, e := range gotEntries {
+		if e.K == myInt(4) {
+			gotSum4 |= e.V.(int)
+		}
+	}
+	var expectedSum4 int
+	for _, e := range expectedEntries {
+		if e.K == myInt(4) {
+			expectedSum4 |= e.V.(int)
+		}
+	}
+	if expectedSum4 != gotSum4 {
+		t.Fatalf("expectedSum4 %d, gotSum4 %d", expectedSum4, gotSum4)
+	}
+
 	SkipListSizeTest(t, sl, 10)
 }
 
@@ -154,6 +191,93 @@ func TestSkipList_Put(t *testing.T) {
 	SkipListSizeTest(t, sl, 3)
 }
 
+func TestSkipList_Replace(t *testing.T) {
+	sl := NewSkipList()
+	sl.Put(myInt(1), 2^10)
+	sl.Replace(myInt(1), 2^11)
+
+	expected := 2 ^ 11
+	got := sl.Get(myInt(1)).(int)
+	if expected != got {
+		t.Fatalf("expected %d, got %d", expected, got)
+	}
+
+	SkipListSizeTest(t, sl, 1)
+
+	sl.Replace(myInt(100), 2^12)
+	sl.Replace(myInt(101), 2^13)
+	sl.Replace(myInt(102), 2^14)
+	sl.Replace(myInt(103), 2^15)
+
+	sl.Replace(myInt(101), 0)
+
+	expected = 0
+	got = sl.Get(myInt(101)).(int)
+	if expected != got {
+		t.Fatalf("expected %d, got %d", expected, got)
+	}
+
+	expected = 2 ^ 14
+	got = sl.Get(myInt(102)).(int)
+	if expected != got {
+		t.Fatalf("expected %d, got %d", expected, got)
+	}
+
+	SkipListSizeTest(t, sl, 5)
+
+}
+
+func TestSkipList_DuplicatedKey_Order(t *testing.T) {
+	sl := NewSkipList()
+	sl.Put(myInt(1), myInt(5))
+	sl.Put(myInt(1), myInt(3))
+	sl.Put(myInt(1), myInt(1))
+
+	sl.Walk(func(e dsa.Entry, tower int) {
+		t.Logf("walk: e %v, tower %d", e, tower)
+	})
+	expected := myInt(1)
+	got := sl.Get(myInt(1)).(myInt)
+	if expected != got {
+		t.Fatalf("expected %d, got %d", expected, got)
+	}
+
+	SkipListSizeTest(t, sl, 3)
+
+	sl.Put(myInt(11), myInt(2))
+	sl.Put(myInt(11), myInt(5))
+	sl.Put(myInt(11), myInt(2))
+	sl.Put(myInt(11), myInt(4))
+	sl.Put(myInt(11), myInt(4))
+	sl.Put(myInt(11), myInt(6))
+	sl.Put(myInt(11), myInt(6))
+	expected = myInt(2)
+	got = sl.Get(myInt(11)).(myInt)
+	if expected != got {
+		t.Fatalf("expected %d, got %d", expected, got)
+	}
+
+	expectedll := list.NewLinkedList()
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(2)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(2)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(4)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(4)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(5)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(6)})
+	expectedll.InsertEnd(dsa.Entry{myInt(11), myInt(6)})
+	gotll := sl.GetRange(myInt(11), myInt(11))
+
+	sl.Walk(func(e dsa.Entry, tower int) {
+		t.Logf("walk: e %v, tower %d", e, tower)
+	})
+
+	if !expectedll.Equal(gotll) {
+		t.Fatalf("expected linkedlist %s, got linkedlist %s", expectedll.String(), gotll.String())
+	}
+
+	SkipListSizeTest(t, sl, 10)
+}
+
 type SortableEntry []dsa.Entry
 
 func (s SortableEntry) Len() int {
@@ -161,10 +285,7 @@ func (s SortableEntry) Len() int {
 }
 
 func (s SortableEntry) Less(i, j int) bool {
-	if s[i].K.Compare(s[j].K) < 0 {
-		return true
-	}
-	return false
+	return s[i].K.Less(s[j].K)
 }
 
 func (s SortableEntry) Swap(i, j int) {

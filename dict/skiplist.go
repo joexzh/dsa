@@ -22,8 +22,8 @@ func (sl *SkipList) Size() int {
 	return sl.Last().Data.(*quadList).Size()
 }
 
-// GetRange by [startK, endK) of key range, returns ordered entries
-func (sl *SkipList) GetRange(startK dsa.Comparable, endK dsa.Comparable) list.LinkedList {
+// GetRange by [startK, endK] of key range, returns ordered entries
+func (sl *SkipList) GetRange(startK dsa.Item, endK dsa.Item) list.LinkedList {
 	ents := list.NewLinkedList()
 	if sl.Empty() {
 		return ents
@@ -35,89 +35,139 @@ func (sl *SkipList) GetRange(startK dsa.Comparable, endK dsa.Comparable) list.Li
 	for nd.below != nil {
 		nd = nd.below
 	}
+
 	if ok {
-		for nd.pred.valid() && nd.pred.entry.K.Compare(startK) >= 0 { // try to lookup before
-			nd = nd.pred
+		for predNd := nd.pred; predNd.valid() && !predNd.entry.K.Less(startK); predNd = predNd.pred { // try to lookup before
+			ents.InsertStart(predNd.entry)
 		}
 	} else {
 		nd = nd.succ
 	}
-	for ; nd.valid() && nd.entry.K.Compare(endK) < 0; nd = nd.succ {
+	for ; nd.valid() && !endK.Less(nd.entry.K); nd = nd.succ {
 		ents.InsertEnd(nd.entry)
 	}
 	return ents
 }
 
-// Get value of k. If k is duplicated, pick the first one with the highest tower
-func (sl *SkipList) Get(k dsa.Comparable) interface{} {
+// Get value of key.
+//
+// If key is duplicated, and Entry.V implements dsa.Item interface, get the first match in ascending order,
+// otherwise simply take the highest tower which results like random.
+func (sl *SkipList) Get(key dsa.Item) interface{} {
 	qlist := sl.First()
 	nd := qlist.Data.(*quadList).First()
-	if ok := sl.search(&qlist, &nd, k); ok {
+	if ok := sl.search(&qlist, &nd, key); ok {
+		_, ok := nd.entry.V.(dsa.Item)
+		if ok {
+			for nd.below.valid() {
+				nd = nd.below
+			}
+			for ; nd.pred.valid() && !nd.pred.entry.K.Less(key); nd = nd.pred {
+				_, ok := nd.pred.entry.V.(dsa.Item)
+				if !ok { // pred entry.V not support dsa.Item interface
+					return nd.entry.V
+				}
+			}
+		}
 		return nd.entry.V
 	}
 	return nil
 }
 
-// Put will always successes, same key already sitting there, new key will insert after it.
-func (sl *SkipList) Put(k dsa.Comparable, v interface{}) bool {
-	e := dsa.Entry{K: k, V: v}
+// Put inserts a key-value pair, will always succeed.
+// If key is duplicated, and v implements dsa.Item interface, put among them in ascending order,
+// otherwise, insert after the founded node (acts like random).
+func (sl *SkipList) Put(key dsa.Item, value interface{}) {
+	e := dsa.Entry{K: key, V: value}
 	if sl.Empty() {
 		sl.addAsFirstLayer()
 	}
 
 	qlist := sl.First()
-	qnd := qlist.Data.(*quadList).First()
-	if ok := sl.search(&qlist, &qnd, k); ok {
-		for qnd.below != nil {
-			qnd = qnd.below
+	nd := qlist.Data.(*quadList).First()
+	if ok := sl.search(&qlist, &nd, key); ok {
+		for nd.below != nil {
+			nd = nd.below
 		}
-	}
 
-	for qnd.succ.valid() && qnd.succ.entry.K.Compare(k) <= 0 { // lookup to right side
-		qnd = qnd.succ
-	}
-	qlist = sl.Last()
-	b := qlist.Data.(*quadList).InsertAfterAbove(e, qnd, nil) // insert first node
+		itemV, vOk := value.(dsa.Item)
+		itemNdV, ok := nd.entry.V.(dsa.Item)
+		if vOk && ok { // compare value and nd.entry.V to determine forward or backward
+			if itemNdV.Less(itemV) { // backward
+				for ; nd.succ.valid() && !key.Less(nd.succ.entry.K); nd = nd.succ {
+					itemNdV, ok := nd.succ.entry.V.(dsa.Item)
+					if !ok || itemV.Less(itemNdV) {
+						break
+					}
+				}
 
-	for rand.Intn(2)&1 == 1 { // 50% chance to add addition node on top of the tower
-		for qnd.valid() && qnd.above == nil {
-			qnd = qnd.pred
-		}
-		if !qnd.valid() {
-			if qlist == sl.First() {
-				sl.addAsFirstLayer() // if run out of layer, add one
+			} else { // forward
+				for nd = nd.pred; nd.valid() && !nd.entry.K.Less(key); nd = nd.pred {
+					itemNdV, ok := nd.entry.V.(dsa.Item)
+					if !ok || !itemV.Less(itemNdV) {
+						break
+					}
+				}
 			}
-			qnd = qlist.Pred().Data.(*quadList).header // move qnd to above layer's header
-		} else {
-			qnd = qnd.above
 		}
-		qlist = qlist.Pred()
-		b = qlist.Data.(*quadList).InsertAfterAbove(e, qnd, b)
 	}
-	return true
+
+	sl.insert(&e, nd)
 }
 
-// Remove one key, if there are duplicate keys, remove the first one with the highest tower
-func (sl *SkipList) Remove(k dsa.Comparable) bool {
+// Replace key-value pair, if key not exist, insert it.
+// Make sure keys are not duplicated, and don't mix with Put method.
+func (sl *SkipList) Replace(key dsa.Item, value interface{}) {
+	e := dsa.Entry{K: key, V: value}
 	if sl.Empty() {
-		return false
+		sl.addAsFirstLayer()
 	}
 
 	qlist := sl.First()
-	qnd := sl.First().Data.(*quadList).First()
-	if !sl.search(&qlist, &qnd, k) {
-		return false
+	nd := qlist.Data.(*quadList).First()
+	if ok := sl.search(&qlist, &nd, key); ok {
+		for ; nd != nil; nd = nd.below { // replace entry from top to bottom
+			nd.entry = e
+		}
+	} else { // not exist
+		sl.insert(&e, nd)
 	}
-	for qlist.Succ() != nil {
-		lower := qnd.below
-		qlist.Data.(*quadList).Remove(qnd)
-		qnd = lower
-		qlist = qlist.Succ()
+}
+
+// Remove all nodes of the same key.
+func (sl *SkipList) Remove(key dsa.Item) int {
+	if sl.Empty() {
+		return 0
 	}
-	for !sl.Empty() && sl.First().Data.(*quadList).Empty() {
-		sl.LinkedList.Remove(sl.First())
+
+	qlist := sl.First()
+	nd := sl.First().Data.(*quadList).First()
+	if !sl.search(&qlist, &nd, key) {
+		return 0
 	}
-	return true
+
+	predBottom, succBottom := sl.remove(qlist, nd)
+	n := 1
+	for nd = predBottom; nd.valid() && !nd.entry.K.Less(key); nd = predBottom { // remove left
+		qlist = sl.Last()
+		for nd.above != nil {
+			nd = nd.above
+			qlist = qlist.Pred()
+		}
+		predBottom, _ = sl.remove(qlist, nd)
+		n++
+	}
+	for nd = succBottom; nd.valid() && !key.Less(nd.entry.K); nd = succBottom { // remove right
+		qlist = sl.Last()
+		for nd.above != nil {
+			nd = nd.above
+			qlist = qlist.Pred()
+		}
+		_, succBottom = sl.remove(qlist, nd)
+		n++
+	}
+
+	return n
 }
 
 func (sl *SkipList) Empty() bool {
@@ -148,6 +198,48 @@ func (sl *SkipList) Walk(f func(e dsa.Entry, tower int)) {
 	}
 }
 
+// insert e after nd, build a tower. nd must be a bottom node.
+// You should use search function getting nd at top of tower first, then travel to bottom.
+func (sl *SkipList) insert(e *dsa.Entry, nd *quadNode) {
+	qlist := sl.Last()
+	b := qlist.Data.(*quadList).InsertAfterAbove(*e, nd, nil) // insert first node
+
+	for rand.Intn(2)&1 == 1 { // 50% chance to add addition node on top of the tower
+		for nd.valid() && nd.above == nil {
+			nd = nd.pred
+		}
+		if !nd.valid() {
+			if qlist == sl.First() {
+				sl.addAsFirstLayer() // if run out of layer, add one
+			}
+			nd = qlist.Pred().Data.(*quadList).header // move nd to above layer's header
+		} else {
+			nd = nd.above
+		}
+		qlist = qlist.Pred()
+		b = qlist.Data.(*quadList).InsertAfterAbove(*e, nd, b)
+	}
+}
+
+// remove from top to bottom.
+// You should use search method first to get qlist and nd
+func (sl *SkipList) remove(qlist *list.LinkedNode, nd *quadNode) (predBottom *quadNode, succBottom *quadNode) {
+	for qlist.Succ() != nil { // remove from top to bottom
+		lower := nd.below
+		if lower == nil {
+			predBottom = nd.pred
+			succBottom = nd.succ
+		}
+		qlist.Data.(*quadList).Remove(nd)
+		nd = lower
+		qlist = qlist.Succ()
+	}
+	for !sl.Empty() && sl.First().Data.(*quadList).Empty() {
+		sl.LinkedList.Remove(sl.First())
+	}
+	return
+}
+
 func (sl *SkipList) addAsFirstLayer() {
 	sl.InsertBefore(sl.First(), NewQuadList())
 }
@@ -165,9 +257,9 @@ func (sl *SkipList) level() int {
 // If not found, qnd will be in the lowest level, with the biggest key whose smaller than k.
 // If qnd's key is duplicated, get the last node
 // This function accepts pointer of pointer, so it can replace it.
-func (sl *SkipList) search(qlistP **list.LinkedNode, qndP **quadNode, k dsa.Comparable) bool {
+func (sl *SkipList) search(qlistP **list.LinkedNode, qndP **quadNode, k dsa.Item) bool {
 	for true {
-		for (*qndP).succ != nil && (*qndP).entry.K.Compare(k) <= 0 {
+		for (*qndP).succ != nil && !k.Less((*qndP).entry.K) {
 			*qndP = (*qndP).succ
 		}
 		*qndP = (*qndP).pred
@@ -231,7 +323,7 @@ func (ql *quadList) Size() int {
 }
 
 // Remove *quadNode, returns entry of it
-func (ql *quadList) Remove(x *quadNode) (v interface{}) {
+func (ql *quadList) Remove(x *quadNode) dsa.Entry {
 	x.pred.succ = x.succ
 	x.succ.pred = x.pred
 	ql.size--
